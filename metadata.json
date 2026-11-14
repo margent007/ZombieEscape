@@ -1,0 +1,6 @@
+{
+  "name": "DeadEscape 2D: Pixel Zombie Survival",
+  "description": "Game 2D sinh tồn trốn thoát zombie phong cách pixel art hồi hộp, nhặt đồ sinh tồn, chế tạo crafting, nhiều màn chơi kịch tính, thử thách hàng ngày, hỗ trợ gamepad và chế độ tối.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
