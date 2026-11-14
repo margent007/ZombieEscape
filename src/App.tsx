@@ -33,6 +33,13 @@ import {
   stepTrapTimers,
   triggerTrapOnContact,
 } from './game/traps';
+import {
+  ZOMBIE_BLUEPRINTS,
+  computeBloaterBurstEffects,
+  createZombieEntity,
+  pickReinforcementZombieType,
+  rollZombieLoot,
+} from './game/zombies';
 import { computeKnockbackVector } from './game/combatAnim';
 import { inputManager } from './game/input';
 import { soundManager } from './game/audio';
@@ -51,6 +58,7 @@ import { SURVIVOR_PROFILES } from './game/updates';
 // Modals & UI Components
 import { TitleScreen } from './components/TitleScreen';
 import { GameHUD } from './components/GameHUD';
+import { MobileControls } from './components/MobileControls';
 import { CraftingModal } from './components/CraftingModal';
 import { SettingsModal } from './components/SettingsModal';
 import { LeaderboardModal } from './components/LeaderboardModal';
@@ -71,6 +79,18 @@ export default function App() {
   const [isDaily, setIsDaily] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [gamepadConnected, setGamepadConnected] = useState<boolean>(false);
+  const [showTouchControls, setShowTouchControls] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return (
+      window.matchMedia?.('(pointer: coarse)')?.matches ||
+      navigator.maxTouchPoints > 0 ||
+      window.innerWidth < 1024
+    );
+  });
+  const showTouchControlsRef = useRef<boolean>(showTouchControls);
+  useEffect(() => {
+    showTouchControlsRef.current = showTouchControls;
+  }, [showTouchControls]);
 
   // Modals Open States
   const [isCraftingOpen, setIsCraftingOpen] = useState(false);
@@ -240,12 +260,19 @@ export default function App() {
     }
   }, []);
 
-  // Update canvas size on resize
+  // Update canvas size and auto-touch mode on resize
   useEffect(() => {
     const updateCanvasSize = () => {
       if (canvasRef.current) {
         canvasRef.current.width = window.innerWidth;
         canvasRef.current.height = window.innerHeight;
+      }
+      const isTouchCapable =
+        window.matchMedia?.('(pointer: coarse)')?.matches || navigator.maxTouchPoints > 0;
+      if (window.innerWidth < 1024 || isTouchCapable) {
+        setShowTouchControls(true);
+      } else {
+        setShowTouchControls(false);
       }
     };
     updateCanvasSize();
@@ -282,30 +309,13 @@ export default function App() {
       const startWeapon: ItemId = hasGun ? 'pistol' : 'crowbar';
 
       // Spawn zombies
-      const spawnedZombies: Zombie[] = lvlConfig.initialZombies.map((iz, idx) => {
-        const baseSpeed = iz.type === 'runner' ? 140 : iz.type === 'dog' ? 170 : iz.type === 'spitter' ? 110 : iz.type === 'tank_mutant' ? 90 : 80;
-        const baseHp = iz.type === 'tank_mutant' ? 320 : iz.type === 'runner' ? 30 : iz.type === 'dog' ? 35 : iz.type === 'spitter' ? 45 : 55;
-        const baseDmg = iz.type === 'tank_mutant' ? 35 : iz.type === 'dog' ? 18 : 14;
-
-        return {
-          id: `z_${idx}_${iz.type}`,
-          type: iz.type,
-          x: iz.x,
-          y: iz.y,
-          hp: Math.round(baseHp * zombieHpMult),
-          maxHp: Math.round(baseHp * zombieHpMult),
-          speed: baseSpeed * zombieSpeedMult,
-          damage: baseDmg,
-          sightRadius: iz.type === 'runner' ? 260 : iz.type === 'spitter' ? 300 : 220,
-          hearingRadius: 320,
-          state: 'idle',
-          angle: Math.random() * Math.PI * 2,
-          targetPos: null,
-          attackCooldown: 0,
-          telegraphTimer: 0,
-          deathTimer: 0,
-        };
-      });
+      const spawnedZombies: Zombie[] = lvlConfig.initialZombies.map((iz, idx) =>
+        createZombieEntity(`z_${idx}_${iz.type}`, iz.type, iz.x, iz.y, {
+          hpMult: zombieHpMult,
+          speedMult: zombieSpeedMult,
+          initialState: 'idle',
+        })
+      );
 
       simStateRef.current = {
         level: lvlConfig,
@@ -464,6 +474,27 @@ export default function App() {
       // 1. PLAYER AIM ANGLE
       if (inputs.gamepadAimAngle !== null) {
         p.aimAngle = inputs.gamepadAimAngle;
+      } else if (inputs.touchAimAngle !== null) {
+        p.aimAngle = inputs.touchAimAngle;
+      } else if (showTouchControlsRef.current) {
+        // Mobile smart aim: aim toward nearest close zombie when attacking, else face movement direction
+        let nearestZ: Zombie | null = null;
+        let nearestDist = 340;
+        if (inputs.attack || inputs.attackHeld) {
+          for (const z of sim.zombies) {
+            if (z.state === 'dead') continue;
+            const d = distance(p.x, p.y, z.x, z.y);
+            if (d < nearestDist) {
+              nearestDist = d;
+              nearestZ = z;
+            }
+          }
+        }
+        if (nearestZ) {
+          p.aimAngle = Math.atan2(nearestZ.y - p.y, nearestZ.x - p.x);
+        } else if (inputs.dx !== 0 || inputs.dy !== 0) {
+          p.aimAngle = Math.atan2(inputs.dy, inputs.dx);
+        }
       } else {
         const screenCenterX = window.innerWidth / 2;
         const screenCenterY = window.innerHeight / 2;
@@ -577,49 +608,47 @@ export default function App() {
         soundManager.playFlashlightClick();
       }
 
-      // Zombie Loot Dropping Helper
+      // Zombie Loot Dropping & Death Effects Helper
       const dropZombieLoot = (deadZ: Zombie) => {
         deadZ.state = 'dead';
         sim.stats.zombiesSlain += 1;
         renderer.addBlood(deadZ.x, deadZ.y, 8);
 
-        // Escalating drop chances: tank 100%, spitter 80%, runner 55%, walker 45%
-        const roll = Math.random();
-        let droppedItem: ItemId | null = null;
-        let count = 1;
+        // Toxic Bloater bursts into corrosive acid cloud on death
+        if (deadZ.type === 'bloater') {
+          const burst = computeBloaterBurstEffects(deadZ, p);
+          renderer.addImpactSparks(deadZ.x, deadZ.y, 0, '#a3e635', 14);
+          renderer.addImpactSparks(deadZ.x, deadZ.y, Math.PI, '#84cc16', 14);
+          renderer.addFloatingText('AXÍT NỔ!', deadZ.x, deadZ.y - 22, '#a3e635', 13);
+          soundManager.playExplosion();
+          if (burst.playerDamage > 0) {
+            p.hp = Math.max(0, p.hp - burst.playerDamage);
+            soundManager.playPlayerHurt();
+            sim.camera.trauma = Math.min(1.0, sim.camera.trauma + 0.45);
+            renderer.addFloatingText(`-${burst.playerDamage} AXÍT`, p.x, p.y - 22, '#a3e635', 12);
+          }
+        }
 
-        if (deadZ.type === 'tank_mutant') {
-          // Tank always drops rare adrenaline or medkit + shotgun shells
-          droppedItem = Math.random() < 0.6 ? 'adrenaline_shot' : 'medkit';
+        const lootRoll = rollZombieLoot(deadZ.type, Math.random());
+        if (lootRoll.extraAmmo) {
           sim.groundItems.push({
             id: Math.random().toString(),
             x: deadZ.x + (Math.random() - 0.5) * 20,
             y: deadZ.y + (Math.random() - 0.5) * 20,
             itemId: 'ammo_shotgun',
-            count: 4,
+            count: lootRoll.extraAmmo,
             spawnTime: Date.now(),
             life: 180,
           });
-        } else if (deadZ.type === 'spitter' && roll < 0.8) {
-          const table: ItemId[] = ['alcohol', 'cloth', 'ammo_pistol', 'nails'];
-          droppedItem = table[Math.floor(Math.random() * table.length)];
-          count = droppedItem === 'ammo_pistol' ? 6 : 1;
-        } else if (deadZ.type === 'runner' && roll < 0.55) {
-          const table: ItemId[] = ['ammo_pistol', 'bandage', 'scrap_metal'];
-          droppedItem = table[Math.floor(Math.random() * table.length)];
-          count = droppedItem === 'ammo_pistol' ? 4 : 1;
-        } else if (deadZ.type === 'walker' && roll < 0.45) {
-          const table: ItemId[] = ['scrap_metal', 'cloth', 'wood_plank', 'bottle'];
-          droppedItem = table[Math.floor(Math.random() * table.length)];
         }
 
-        if (droppedItem) {
+        if (lootRoll.itemId && lootRoll.count > 0) {
           sim.groundItems.push({
             id: Math.random().toString(),
             x: deadZ.x + (Math.random() - 0.5) * 14,
             y: deadZ.y + (Math.random() - 0.5) * 14,
-            itemId: droppedItem,
-            count,
+            itemId: lootRoll.itemId,
+            count: lootRoll.count,
             spawnTime: Date.now(),
             life: 180,
           });
@@ -646,6 +675,7 @@ export default function App() {
           y: bc.y,
           radius: 68,
           duration: 5.5,
+          ignoreZombies: true,
         });
 
         for (const zHit of blast.zombieHits) {
@@ -887,7 +917,8 @@ export default function App() {
           // Check collision with zombies
           for (const z of sim.zombies) {
             if (z.state === 'dead') continue;
-            if (distance(proj.x, proj.y, z.x, z.y) < (z.type === 'tank_mutant' ? 32 : 18)) {
+            const hitR = ZOMBIE_BLUEPRINTS[z.type]?.hitRadius ?? 18;
+            if (distance(proj.x, proj.y, z.x, z.y) < hitR) {
               z.hp -= proj.damage;
               z.hitFlashTimer = 0.11;
               const kb = computeKnockbackVector(
@@ -900,7 +931,13 @@ export default function App() {
               z.x = Math.max(40, Math.min(lvl.width - 40, z.x + kb.dx));
               z.y = Math.max(40, Math.min(lvl.height - 40, z.y + kb.dy));
               renderer.addBlood(z.x, z.y, 4);
-              renderer.addImpactSparks(proj.x, proj.y, Math.atan2(proj.vy, proj.vx), '#dc2626', 5);
+              renderer.addImpactSparks(
+                proj.x,
+                proj.y,
+                Math.atan2(proj.vy, proj.vx),
+                z.type === 'armored' ? '#38bdf8' : '#dc2626',
+                5
+              );
               renderer.addFloatingText(`-${proj.damage}`, z.x, z.y - 12, '#fb923c');
               hit = true;
               if (z.hp <= 0) {
@@ -964,13 +1001,15 @@ export default function App() {
       for (let i = sim.firePatches.length - 1; i >= 0; i--) {
         const fire = sim.firePatches[i];
         fire.duration -= dt;
-        // Burn nearby zombies
-        for (const z of sim.zombies) {
-          if (z.state === 'dead') continue;
-          if (distance(fire.x, fire.y, z.x, z.y) < fire.radius) {
-            z.hp -= 35 * dt;
-            if (z.hp <= 0) {
-              dropZombieLoot(z);
+        // Burn nearby zombies only for player Molotov fire (not trap barrel fire)
+        if (!fire.ignoreZombies) {
+          for (const z of sim.zombies) {
+            if (z.state === 'dead') continue;
+            if (distance(fire.x, fire.y, z.x, z.y) < fire.radius) {
+              z.hp -= 35 * dt;
+              if (z.hp <= 0) {
+                dropZombieLoot(z);
+              }
             }
           }
         }
@@ -1023,41 +1062,27 @@ export default function App() {
           }
         }
 
-        // Zombie contact with Environmental Traps (barrels & electric wires)
-        let trapSpeedMult = 1.0;
-        for (const trap of lvl.traps || []) {
-          if (trap.state === 'destroyed') continue;
-          if (trap.state === 'armed' && isPointInTrapTrigger(trap, z.x, z.y, 14)) {
-            const ev = triggerTrapOnContact(trap, 'zombie');
-            if (ev.event === 'primed') {
-              soundManager.playBarrelFuse();
-              renderer.addFloatingText('XÌ XÌ...!', trap.x + 15, trap.y - 12, '#facc15', 11);
-            } else if (ev.event === 'activated') {
-              soundManager.playElectricZap();
-              renderer.addFloatingText('⚡ SỐC ĐIỆN!', trap.x + trap.width / 2, trap.y - 12, '#22d3ee', 12);
-            }
-          }
-          if (trap.type === 'electric_wire' && trap.state === 'active' && isPointInTrapTrigger(trap, z.x, z.y, 14)) {
-            trapSpeedMult = 0.25; // Stunned / slowed by high voltage
-            z.hp -= trap.damage * dt;
-            if (z.state === 'idle' || z.state === 'wandering') z.state = 'chasing';
-            if (sim.trapFeedbackTimer <= 0) {
-              soundManager.playElectricZap();
-              renderer.addFloatingText('⚡-15', z.x, z.y - 15, '#67e8f9', 11);
-              electricShockPulsed = true;
-            }
-            if (z.hp <= 0) {
-              dropZombieLoot(z);
-              break;
-            }
-          }
-        }
-        if ((z.state as string) === 'dead') continue;
-
+        // Zombies are completely unaffected by environmental traps (walk through freely without triggering or taking damage)
         if (z.state === 'chasing') {
           z.angle = Math.atan2(targetY - z.y, targetX - z.x);
-          const zMoveX = Math.cos(z.angle) * z.speed * trapSpeedMult * dt;
-          const zMoveY = Math.sin(z.angle) * z.speed * trapSpeedMult * dt;
+
+          // Archetype movement modifiers (Crawler close-range surge & Stalker shadow lunge)
+          let speedFactor = 1.0;
+          if (z.type === 'crawler' && distToPlayer < 135) {
+            speedFactor = 1.72;
+          } else if (z.type === 'stalker') {
+            z.lungeCooldown = Math.max(0, (z.lungeCooldown ?? 0) - dt);
+            if (distToPlayer > 55 && distToPlayer < 190 && z.lungeCooldown <= 0) {
+              z.telegraphTimer = 0.25;
+              z.lungeCooldown = 2.6;
+              soundManager.playZombieAlert();
+            } else if ((z.lungeCooldown ?? 0) > 2.05) {
+              speedFactor = 2.25;
+            }
+          }
+
+          const zMoveX = Math.cos(z.angle) * z.speed * speedFactor * dt;
+          const zMoveY = Math.sin(z.angle) * z.speed * speedFactor * dt;
 
           // Check barricade collision
           let blockedByBarricade: Barricade | null = null;
@@ -1252,13 +1277,13 @@ export default function App() {
         }
       }
 
-      // 7.7 ESCALATING ZOMBIE REINFORCEMENTS
+      // 7.7 ESCALATING ZOMBIE REINFORCEMENTS (LARGER HORDE & VARIED ARCHETYPES)
       sim.reinforcementTimer -= dt;
       if (sim.reinforcementTimer <= 0) {
-        sim.reinforcementTimer = Math.max(22, 45 - currentLevelId * 2.5);
+        sim.reinforcementTimer = Math.max(12, 28 - currentLevelId * 1.6);
         const aliveCount = sim.zombies.filter(z => z.state !== 'dead').length;
-        if (aliveCount < 95) {
-          const spawnCount = Math.min(4, Math.floor(2 + currentLevelId * 0.4));
+        if (aliveCount < 145) {
+          const spawnCount = Math.min(6, Math.floor(3 + currentLevelId * 0.35));
           for (let k = 0; k < spawnCount; k++) {
             const edge = Math.floor(Math.random() * 4);
             let sx = 60, sy = 60;
@@ -1267,27 +1292,13 @@ export default function App() {
             else if (edge === 2) { sx = 60; sy = Math.random() * lvl.height; }
             else { sx = lvl.width - 60; sy = Math.random() * lvl.height; }
 
-            const zType = currentLevelId >= 6 && Math.random() < 0.25 ? 'spitter' : Math.random() < 0.35 ? 'runner' : 'walker';
-            const baseSpeed = zType === 'runner' ? 140 : zType === 'spitter' ? 110 : 85;
-            const baseHp = zType === 'runner' ? 30 : zType === 'spitter' ? 45 : 55;
-            sim.zombies.push({
-              id: `z_reinforce_${Date.now()}_${k}`,
-              type: zType,
-              x: sx,
-              y: sy,
-              hp: baseHp,
-              maxHp: baseHp,
-              speed: baseSpeed,
-              damage: 15,
-              sightRadius: 260,
-              hearingRadius: 360,
-              state: 'chasing',
-              angle: Math.random() * Math.PI * 2,
-              targetPos: { x: p.x, y: p.y },
-              attackCooldown: 0,
-              telegraphTimer: 0,
-              deathTimer: 0,
-            });
+            const zType = pickReinforcementZombieType(currentLevelId, Math.random());
+            sim.zombies.push(
+              createZombieEntity(`z_reinforce_${Date.now()}_${k}`, zType, sx, sy, {
+                initialState: 'chasing',
+                targetPos: { x: p.x, y: p.y },
+              })
+            );
           }
           soundManager.playZombieGrowl(0.9);
           renderer.addFloatingText('CẢNH BÁO: ĐÀN ZOMBIE TĂNG VIỆN!', p.x, p.y - 45, '#ef4444', 12);
@@ -1550,6 +1561,8 @@ export default function App() {
           zombies={simStateRef.current.zombies}
           inventory={simStateRef.current.player.inventory}
           minimapVisible={settings.minimapVisible}
+          showTouchControls={showTouchControls}
+          onToggleTouchControls={() => setShowTouchControls(v => !v)}
           onToggleMinimap={() => {
             setSettings(s => {
               const next = !s.minimapVisible;
@@ -1563,6 +1576,20 @@ export default function App() {
           onToggleFlashlight={handleToggleFlashlight}
         />
       )}
+
+      {/* MOBILE TOUCH CONTROLS OVERLAY */}
+      {gameState === 'playing' &&
+        showTouchControls &&
+        !isCraftingOpen &&
+        !isSettingsOpen &&
+        !isSaveOpen && (
+          <MobileControls
+            equippedWeapon={hudWeapon}
+            ammoCount={hudAmmo}
+            flashlightOn={hudFlashlight}
+            interactTargetName={hudInteractName}
+          />
+        )}
 
       {/* CRAFTING MODAL */}
       <CraftingModal

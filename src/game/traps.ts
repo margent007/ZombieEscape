@@ -91,9 +91,10 @@ export function isProjectileHittingTrap(
 
 export function triggerTrapOnContact(
   trap: EnvironmentalTrap,
-  _actor: 'player' | 'zombie'
+  actor: 'player' | 'zombie'
 ): { triggered: boolean; event: 'primed' | 'activated' | 'none' } {
-  if (trap.state !== 'armed') {
+  // Zombies are completely unaffected by traps and never trigger them on contact
+  if (actor === 'zombie' || trap.state !== 'armed') {
     return { triggered: false, event: 'none' };
   }
 
@@ -194,25 +195,13 @@ export interface BarrelBlastResult {
 
 export function computeBarrelBlastEffects(
   barrel: EnvironmentalTrap,
-  zombies: Pick<Zombie, 'id' | 'x' | 'y' | 'state'>[],
+  _zombies: Pick<Zombie, 'id' | 'x' | 'y' | 'state'>[],
   player: { x: number; y: number },
   otherTraps: EnvironmentalTrap[]
 ): BarrelBlastResult {
   const center = getTrapCenter(barrel);
+  // Zombies are immune to environmental trap blasts
   const zombieHits: { id: string; damage: number }[] = [];
-
-  for (const z of zombies) {
-    if (z.state === 'dead') continue;
-    const d = distance(center.x, center.y, z.x, z.y);
-    const effectiveRadius = barrel.radius + 16;
-    if (d <= effectiveRadius) {
-      const falloff = Math.max(0.35, 1 - d / effectiveRadius);
-      zombieHits.push({
-        id: z.id,
-        damage: Math.round(barrel.damage * falloff),
-      });
-    }
-  }
 
   const distToPlayer = distance(center.x, center.y, player.x, player.y);
   let playerDamage = 0;

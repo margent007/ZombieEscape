@@ -12,6 +12,7 @@ import {
 } from '../types/game';
 import { ITEM_REGISTRY } from './items';
 import { computeGunRecoilPose, computeMeleeSwingPose } from './combatAnim';
+import { ZOMBIE_BLUEPRINTS } from './zombies';
 
 export interface FloatingText {
   id: string;
@@ -980,7 +981,7 @@ export class GameRenderer {
       ctx.stroke();
     }
 
-    const radius = z.type === 'tank_mutant' ? 28 : z.type === 'dog' ? 13 : 16;
+    const radius = ZOMBIE_BLUEPRINTS[z.type]?.radius ?? 16;
 
     // --- ZOMBIE ARCHETYPE RENDERING ---
     if (z.type === 'walker') {
@@ -1179,6 +1180,159 @@ export class GameRenderer {
       ctx.fillStyle = '#ef4444'; // Spikes & blood
       ctx.fillRect(30, -20, 4, 4);
       ctx.fillRect(30, 16, 4, 4);
+    } else if (z.type === 'crawler') {
+      // 6. Mangled Floor Crawler (Severed torso dragging bloody smear)
+      // Trailing bloody drag marks behind severed lower body
+      ctx.fillStyle = 'rgba(127, 29, 29, 0.72)';
+      ctx.fillRect(-20, -6, 14, 4);
+      ctx.fillRect(-18, 2, 12, 4);
+
+      // Mangled ragged torso low to floor
+      ctx.fillStyle = '#3f4e3c';
+      ctx.beginPath();
+      ctx.ellipse(-2, 0, 10, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Exposed spine & torn crimson waist
+      ctx.fillStyle = '#7f1d1d';
+      ctx.fillRect(-12, -5, 6, 10);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(-10, -2, 4, 4);
+
+      // Hunched gaunt skull
+      ctx.fillStyle = '#4a5a46';
+      ctx.beginPath();
+      ctx.arc(5, 0, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Sunken glowing rose-red eyes
+      ctx.fillStyle = '#fb7185';
+      ctx.fillRect(9, -3, 2, 2);
+      ctx.fillRect(9, 1, 2, 2);
+
+      // Long scraping forearms pulling forward
+      const dragWave = Math.sin(now * 0.015 + z.x) * 4;
+      ctx.fillStyle = '#3b4938';
+      ctx.fillRect(4, -10, 13 + dragWave, 3.5);
+      ctx.fillRect(4, 6.5, 13 - dragWave, 3.5);
+      ctx.fillStyle = '#991b1b';
+      ctx.fillRect(16 + dragWave, -11, 3, 4);
+      ctx.fillRect(16 - dragWave, 6, 3, 4);
+
+    } else if (z.type === 'bloater') {
+      // 7. Toxic Gas Bloater (Swollen bile-filled corpse that explodes on death)
+      const swell = Math.sin(now * 0.008 + z.y) * 1.6;
+      // Swollen rotting torso
+      ctx.fillStyle = '#3b2f4a';
+      ctx.beginPath();
+      ctx.arc(-1, 0, 19 + swell * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#65a30d';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Pulsating glowing lime-green toxic sacs
+      ctx.fillStyle = '#a3e635';
+      ctx.beginPath();
+      ctx.arc(-5, -9, 6.5 + swell * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(-4, 9, 6 - swell * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#d9f99d';
+      ctx.beginPath();
+      ctx.arc(3, 0, 5 + swell * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ruptured bloated skull
+      ctx.fillStyle = '#4c1d95';
+      ctx.beginPath();
+      ctx.arc(9, 0, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#bef264';
+      ctx.fillRect(14, -3, 2.5, 2.5);
+      ctx.fillRect(14, 1, 2.5, 2.5);
+
+      // Stubby outstretched arms
+      ctx.fillStyle = '#3f6212';
+      ctx.fillRect(8, -14, 10, 4.5);
+      ctx.fillRect(8, 10, 10, 4.5);
+
+    } else if (z.type === 'stalker') {
+      // 8. Shadow Stalker (Gaunt pale nocturnal lunger with cyan eyes)
+      // Shadowy aura trail
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
+      ctx.beginPath();
+      ctx.ellipse(-4, 0, 16, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Pale gaunt corpse torso
+      ctx.fillStyle = '#cbd5e1';
+      ctx.beginPath();
+      ctx.ellipse(-1, 0, 11, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Jagged dorsal bone spikes
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(-8, -2, 3, 4);
+      ctx.fillRect(-3, -2, 3, 4);
+
+      // Gaunt skull
+      ctx.fillStyle = '#e2e8f0';
+      ctx.beginPath();
+      ctx.arc(6, 0, 7.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Piercing glowing cyan predator eyes
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(10, -4, 3, 2.5);
+      ctx.fillRect(10, 1.5, 3, 2.5);
+
+      // Scythe-like clawed arms
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(4, -12, 18, 3);
+      ctx.fillRect(4, 9, 18, 3);
+      ctx.fillStyle = '#e11d48';
+      ctx.fillRect(21, -13, 5, 4);
+      ctx.fillRect(21, 9, 5, 4);
+
+    } else if (z.type === 'armored') {
+      // 9. Riot Armored Zombie (Infected tactical trooper in Kevlar armor)
+      // Heavy tactical armor pads
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.ellipse(-2, 0, 16, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Kevlar chest rig & hazard shoulder plates
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(-8, -11, 14, 22);
+      ctx.fillStyle = '#f97316'; // Tactical orange stripe
+      ctx.fillRect(-2, -10, 3, 20);
+
+      // Riot Helmet & Cracked Glowing Visor
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(5, 0, 9.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Visor glass
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(10, -5, 4, 10);
+      // Red infected eye peeking through cracked visor
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(11, -3, 2.5, 2.5);
+      ctx.fillRect(11, 1.5, 2.5, 2.5);
+
+      // Armored gauntlets reaching forward
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(5, -14, 15, 5);
+      ctx.fillRect(5, 9, 15, 5);
+      ctx.fillStyle = '#7f1d1d';
+      ctx.fillRect(18, -14, 4, 5);
+      ctx.fillRect(18, 9, 4, 5);
     }
 
     if ((z.hitFlashTimer || 0) > 0) {
@@ -1193,11 +1347,12 @@ export class GameRenderer {
 
     // Zombie HP Bar (show if damaged)
     if (z.hp < z.maxHp && z.hp > 0) {
-      const barW = z.type === 'tank_mutant' ? 56 : 28;
+      const barW =
+        z.type === 'tank_mutant' ? 56 : z.type === 'bloater' || z.type === 'armored' ? 38 : 28;
       const pct = z.hp / z.maxHp;
       ctx.fillStyle = '#450a0a';
       ctx.fillRect(z.x - barW / 2, z.y - radius - 10, barW, 4);
-      ctx.fillStyle = '#ef4444';
+      ctx.fillStyle = z.type === 'armored' ? '#38bdf8' : z.type === 'bloater' ? '#a3e635' : '#ef4444';
       ctx.fillRect(z.x - barW / 2, z.y - radius - 10, barW * pct, 4);
     }
   }
@@ -1647,10 +1802,10 @@ export class GameRenderer {
         ctx.save();
         ctx.translate(zScreenX, zScreenY);
         ctx.rotate(z.angle);
-        const eyeColor = z.type === 'runner' ? '#fde047' : z.type === 'spitter' ? '#a3e635' : '#ef4444';
+        const eyeColor = ZOMBIE_BLUEPRINTS[z.type]?.eyeColor ?? '#ef4444';
         ctx.fillStyle = eyeColor;
         ctx.shadowColor = eyeColor;
-        ctx.shadowBlur = 6;
+        ctx.shadowBlur = z.type === 'stalker' ? 9 : 6;
         ctx.fillRect(8, -4, 2.5, 2.5);
         ctx.fillRect(8, 2, 2.5, 2.5);
         ctx.restore();

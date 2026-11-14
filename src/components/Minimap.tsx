@@ -155,12 +155,13 @@ export const Minimap: React.FC<MinimapProps> = ({
   }
 
   return (
-    <div className="pointer-events-auto bg-zinc-950/90 border-2 border-zinc-700 p-2 shadow-xl font-mono select-none">
+    <div className="pointer-events-auto bg-zinc-950/90 border border-zinc-700 sm:border-2 p-1.5 sm:p-2 shadow-xl font-mono select-none">
       {/* Header */}
-      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-zinc-800 text-[10px]">
+      <div className="flex items-center justify-between pb-1 sm:pb-1.5 mb-1 sm:mb-1.5 border-b border-zinc-800 text-[9px] sm:text-[10px]">
         <div className="flex items-center gap-1 text-zinc-300 font-bold">
-          <Compass className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-amber-400">RADAR VÙNG</span>
+          <Compass className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
+          <span className="text-amber-400 hidden sm:inline">RADAR VÙNG</span>
+          <span className="text-amber-400 sm:hidden">RADAR</span>
         </div>
         <button
           onClick={onToggleVisible}
@@ -174,11 +175,11 @@ export const Minimap: React.FC<MinimapProps> = ({
 
       {/* Radar Canvas */}
       <div className="relative border border-zinc-800 bg-black">
-        <canvas ref={canvasRef} width={160} height={110} className="block" />
+        <canvas ref={canvasRef} width={160} height={110} className="block w-[104px] h-[68px] md:w-[152px] md:h-[104px]" />
       </div>
 
       {/* Legend */}
-      <div className="grid grid-cols-4 gap-1 pt-1.5 text-[9px] text-zinc-400 text-center">
+      <div className="hidden lg:grid grid-cols-4 gap-1 pt-1.5 text-[9px] text-zinc-400 text-center">
         <span className="flex items-center justify-center gap-0.5">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-400" /> Bạn
         </span>

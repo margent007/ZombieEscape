@@ -65,7 +65,16 @@ export interface CraftingRecipe {
   category: 'medical' | 'survival' | 'combat';
 }
 
-export type ZombieType = 'walker' | 'runner' | 'spitter' | 'dog' | 'tank_mutant';
+export type ZombieType =
+  | 'walker'
+  | 'runner'
+  | 'spitter'
+  | 'dog'
+  | 'tank_mutant'
+  | 'crawler'
+  | 'bloater'
+  | 'stalker'
+  | 'armored';
 
 export interface Zombie {
   id: string;
@@ -84,6 +93,7 @@ export interface Zombie {
   attackCooldown: number;
   telegraphTimer: number; // For windup visual warning
   hitFlashTimer?: number; // Brief flash when taking damage
+  lungeCooldown?: number; // Special lunge/surge timer for stalkers
   deathTimer: number;
   lootDrop?: ItemId;
 }
@@ -124,6 +134,7 @@ export interface FirePatch {
   y: number;
   radius: number;
   duration: number;
+  ignoreZombies?: boolean;
 }
 
 export interface LootContainer {

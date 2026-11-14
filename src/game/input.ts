@@ -35,6 +35,16 @@ export class InputManager {
   public gamepadId: string = '';
   private lastGamepadButtons: boolean[] = [];
 
+  // Mobile Touch Controls state
+  private touchDx: number = 0;
+  private touchDy: number = 0;
+  private touchSprint: boolean = false;
+  private touchAimAngle: number | null = null;
+  private touchHeld = new Set<'attack' | 'interact'>();
+  private touchJustPressed = new Set<
+    'attack' | 'interact' | 'reload' | 'flashlight' | 'sonarPing' | 'quickUse' | 'crafting' | 'minimap' | 'pause'
+  >();
+
   constructor() {
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this.handleKeyUp = this.handleKeyUp.bind(this);
@@ -129,16 +139,53 @@ export class InputManager {
     this.gamepadId = '';
   }
 
+  public setTouchMove(dx: number, dy: number, sprint: boolean = false) {
+    this.touchDx = dx;
+    this.touchDy = dy;
+    this.touchSprint = sprint;
+  }
+
+  public setTouchAim(angle: number | null) {
+    this.touchAimAngle = angle;
+  }
+
+  public setTouchHold(action: 'attack' | 'interact', held: boolean) {
+    if (held) {
+      if (!this.touchHeld.has(action)) {
+        this.touchJustPressed.add(action);
+      }
+      this.touchHeld.add(action);
+    } else {
+      this.touchHeld.delete(action);
+    }
+  }
+
+  public triggerTouchAction(
+    action: 'attack' | 'interact' | 'reload' | 'flashlight' | 'sonarPing' | 'quickUse' | 'crafting' | 'minimap' | 'pause'
+  ) {
+    this.touchJustPressed.add(action);
+  }
+
+  public resetTouch() {
+    this.touchDx = 0;
+    this.touchDy = 0;
+    this.touchSprint = false;
+    this.touchAimAngle = null;
+    this.touchHeld.clear();
+    this.touchJustPressed.clear();
+  }
+
   /**
    * Called once at the end of each game frame to consume edge triggers
    */
   public endFrame() {
     this.justPressedKeys.clear();
+    this.touchJustPressed.clear();
     this.isMouseJustPressed = false;
   }
 
   /**
-   * Polls input vector and action states combining Keyboard, Mouse, and Gamepad
+   * Polls input vector and action states combining Keyboard, Mouse, Touch, and Gamepad
    */
   public getInputs(): {
     dx: number;
@@ -158,6 +205,7 @@ export class InputManager {
     sonarPing: boolean;
     pause: boolean;
     gamepadAimAngle: number | null;
+    touchAimAngle: number | null;
   } {
     let dx = 0;
     let dy = 0;
@@ -265,6 +313,24 @@ export class InputManager {
       }
     }
 
+    // Merge Mobile Touch Inputs
+    if (this.touchDx !== 0 || this.touchDy !== 0) {
+      dx = this.touchDx;
+      dy = this.touchDy;
+    }
+    if (this.touchSprint) sprint = true;
+    if (this.touchJustPressed.has('interact')) interact = true;
+    if (this.touchHeld.has('interact')) interactHeld = true;
+    if (this.touchJustPressed.has('attack')) attack = true;
+    if (this.touchHeld.has('attack')) attackHeld = true;
+    if (this.touchJustPressed.has('reload')) reload = true;
+    if (this.touchJustPressed.has('flashlight')) flashlight = true;
+    if (this.touchJustPressed.has('crafting')) crafting = true;
+    if (this.touchJustPressed.has('minimap')) minimap = true;
+    if (this.touchJustPressed.has('quickUse')) quickUse = true;
+    if (this.touchJustPressed.has('sonarPing')) sonarPing = true;
+    if (this.touchJustPressed.has('pause')) pause = true;
+
     // Normalize diagonal movement vector
     if (dx !== 0 && dy !== 0) {
       const mag = Math.hypot(dx, dy);
@@ -292,6 +358,7 @@ export class InputManager {
       sonarPing,
       pause,
       gamepadAimAngle,
+      touchAimAngle: this.touchAimAngle,
     };
   }
 

@@ -61,7 +61,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   return (
     <div
-      className="absolute inset-0 z-10 w-full h-full overflow-hidden flex flex-col justify-between items-center p-6 bg-zinc-950 font-mono select-none"
+      className="absolute inset-0 z-10 w-full h-full overflow-y-auto flex flex-col justify-between items-center p-3 sm:p-6 bg-zinc-950 font-mono select-none"
       style={{
         backgroundImage: `
           radial-gradient(circle at 50% 30%, rgba(220, 38, 38, 0.12) 0%, transparent 60%),
